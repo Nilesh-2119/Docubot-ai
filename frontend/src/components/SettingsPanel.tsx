@@ -8,25 +8,26 @@ import {
     FileText, Trash2, Database, Clock, Code2, Copy,
     Check, Settings as SettingsIcon, FileSpreadsheet, File,
     Globe, MessageCircle, Send as SendIcon, RefreshCw, Plus,
-    Link, Loader2
+    Link, Loader2, Power, Eye, EyeOff, ExternalLink
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-interface GoogleSheet {
-    id: string;
-    chatbot_id: string;
-    sheet_url: string;
-    sheet_name: string;
-    status: string;
-    last_synced_at: string | null;
-    sync_interval_minutes: number;
-    created_at: string;
-}
+// GoogleSheet interface imported from Types
+import { GoogleSheet } from '@/lib/types';
 
 interface SettingsPanelProps {
     chatbot: Chatbot;
     isOpen: boolean;
     onClose: () => void;
+}
+
+interface IntegrationData {
+    id: string;
+    chatbot_id: string;
+    platform: string;
+    config: Record<string, string>;
+    is_active: boolean;
+    created_at: string;
 }
 
 export default function SettingsPanel({
@@ -46,13 +47,53 @@ export default function SettingsPanel({
     const [addingSheet, setAddingSheet] = useState(false);
     const [syncingSheetId, setSyncingSheetId] = useState<string | null>(null);
 
+    // Google Auth State
+    const [isGoogleConnected, setIsGoogleConnected] = useState(false);
+    const [usePrivateSheet, setUsePrivateSheet] = useState(false);
+
+    // Integration state
+    const [integrations, setIntegrations] = useState<IntegrationData[]>([]);
+    const [loadingIntegrations, setLoadingIntegrations] = useState(false);
+
+    // WhatsApp shared-number
+    const [waStatus, setWaStatus] = useState<any>(null);
+    const [enablingWa, setEnablingWa] = useState(false);
+    const [codeCopied, setCodeCopied] = useState(false);
+
+    // Telegram form
+    const [tgBotToken, setTgBotToken] = useState('');
+    const [connectingTg, setConnectingTg] = useState(false);
+    const [showTgToken, setShowTgToken] = useState(false);
+
     useEffect(() => {
         if (isOpen && chatbot.id) {
             loadDocuments();
             loadEmbeddingCount();
             loadGoogleSheets();
+            checkGoogleStatus();
+            loadIntegrations();
+            loadWhatsAppStatus();
         }
     }, [isOpen, chatbot.id]);
+
+    const checkGoogleStatus = async () => {
+        try {
+            const status = await api.getGoogleAuthStatus();
+            setIsGoogleConnected(status.connected);
+        } catch (error) {
+            console.error('Failed to check Google status:', error);
+        }
+    };
+
+    const handleConnectGoogle = async () => {
+        try {
+            const { url } = await api.getGoogleAuthUrl();
+            localStorage.setItem('google_auth_return_url', window.location.href);
+            window.location.href = url;
+        } catch (error: any) {
+            toast.error('Failed to initiate Google Login');
+        }
+    };
 
     const loadDocuments = async () => {
         try {
@@ -81,6 +122,27 @@ export default function SettingsPanel({
         }
     };
 
+    const loadIntegrations = async () => {
+        setLoadingIntegrations(true);
+        try {
+            const result = await api.getIntegrations(chatbot.id);
+            setIntegrations(result);
+        } catch (error) {
+            console.error('Failed to load integrations:', error);
+        } finally {
+            setLoadingIntegrations(false);
+        }
+    };
+
+    const loadWhatsAppStatus = async () => {
+        try {
+            const result = await api.getWhatsAppStatus(chatbot.id);
+            setWaStatus(result);
+        } catch (error) {
+            console.error('Failed to load WhatsApp status:', error);
+        }
+    };
+
     const handleDelete = async (docId: string) => {
         if (!confirm('Delete this document and all its embeddings?')) return;
         try {
@@ -100,10 +162,17 @@ export default function SettingsPanel({
         }
         setAddingSheet(true);
         try {
-            await api.addGoogleSheet(chatbot.id, sheetUrl, sheetName || 'Google Sheet');
+            if (usePrivateSheet) {
+                if (!isGoogleConnected) throw new Error("Please connect your Google Account first.");
+                await api.addStructuredSheet(chatbot.id, sheetUrl, sheetName || 'Google Sheet');
+            } else {
+                await api.addGoogleSheet(chatbot.id, sheetUrl, sheetName || 'Google Sheet');
+            }
+
             toast.success('Google Sheet connected and data synced!');
             setSheetUrl('');
             setSheetName('');
+            setUsePrivateSheet(false);
             loadGoogleSheets();
             loadEmbeddingCount();
         } catch (error: any) {
@@ -139,6 +208,80 @@ export default function SettingsPanel({
         }
     };
 
+    // ── Integration Handlers ────────────────────────────
+
+    const handleEnableWhatsApp = async () => {
+        setEnablingWa(true);
+        try {
+            const result = await api.enableWhatsApp(chatbot.id);
+            setWaStatus(result);
+            toast.success('WhatsApp enabled! Share the access code with your users.');
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to enable WhatsApp');
+        } finally {
+            setEnablingWa(false);
+        }
+    };
+
+    const handleDisableWhatsApp = async () => {
+        if (!confirm('Disable WhatsApp? Users will no longer be able to message this chatbot via WhatsApp.')) return;
+        try {
+            await api.disableWhatsApp(chatbot.id);
+            setWaStatus(null);
+            toast.success('WhatsApp disabled');
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to disable WhatsApp');
+        }
+    };
+
+    const copyAccessCode = (code: string) => {
+        navigator.clipboard.writeText(`START ${code}`);
+        setCodeCopied(true);
+        toast.success('Access code copied!');
+        setTimeout(() => setCodeCopied(false), 2000);
+    };
+
+    const handleConnectTelegram = async () => {
+        if (!tgBotToken.trim()) {
+            toast.error('Please enter your Telegram Bot Token');
+            return;
+        }
+        setConnectingTg(true);
+        try {
+            await api.createIntegration(chatbot.id, 'telegram', {
+                bot_token: tgBotToken.trim(),
+            });
+            toast.success('Telegram bot connected! Webhook registered automatically.');
+            setTgBotToken('');
+            loadIntegrations();
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to connect Telegram');
+        } finally {
+            setConnectingTg(false);
+        }
+    };
+
+    const handleToggleIntegration = async (integ: IntegrationData) => {
+        try {
+            await api.updateIntegration(chatbot.id, integ.id, { is_active: !integ.is_active });
+            toast.success(`${integ.platform} ${integ.is_active ? 'paused' : 'activated'}`);
+            loadIntegrations();
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to update');
+        }
+    };
+
+    const handleDisconnectIntegration = async (integ: IntegrationData) => {
+        if (!confirm(`Disconnect ${integ.platform === 'whatsapp' ? 'WhatsApp' : 'Telegram'}? This will stop receiving messages.`)) return;
+        try {
+            await api.deleteIntegration(chatbot.id, integ.id);
+            toast.success(`${integ.platform === 'whatsapp' ? 'WhatsApp' : 'Telegram'} disconnected`);
+            loadIntegrations();
+        } catch (error: any) {
+            toast.error(error.message || 'Failed to disconnect');
+        }
+    };
+
     const formatFileSize = (bytes: number) => {
         if (bytes < 1024) return `${bytes} B`;
         if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
@@ -166,10 +309,14 @@ export default function SettingsPanel({
         setTimeout(() => setCopied(false), 2000);
     };
 
+    // Helper: get existing integration by platform
+    const tgIntegration = integrations.find(i => i.platform === 'telegram');
+    const backendUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+
     if (!isOpen) return null;
 
     return (
-        <div className="fixed inset-y-0 right-0 w-[420px] bg-dark-900 border-l border-dark-800 z-50 flex flex-col animate-slide-in-left shadow-2xl">
+        <div className="fixed inset-y-0 right-0 w-full md:w-[420px] bg-dark-900 border-l border-dark-800 z-50 flex flex-col animate-slide-in-left shadow-2xl">
             {/* Header */}
             <div className="flex items-center justify-between px-6 py-4 border-b border-dark-800">
                 <div className="flex items-center gap-2">
@@ -285,13 +432,28 @@ export default function SettingsPanel({
 
                         {/* Google Sheets Section */}
                         <div className="space-y-3 pt-2">
-                            <div className="flex items-center gap-2">
-                                <div className="w-5 h-5 rounded bg-green-500/10 flex items-center justify-center">
-                                    <FileSpreadsheet className="w-3 h-3 text-green-400" />
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <div className="w-5 h-5 rounded bg-green-500/10 flex items-center justify-center">
+                                        <FileSpreadsheet className="w-3 h-3 text-green-400" />
+                                    </div>
+                                    <h4 className="text-xs font-semibold text-dark-500 uppercase tracking-wider">
+                                        Google Sheets
+                                    </h4>
                                 </div>
-                                <h4 className="text-xs font-semibold text-dark-500 uppercase tracking-wider">
-                                    Google Sheets
-                                </h4>
+                                {!isGoogleConnected && (
+                                    <button
+                                        onClick={handleConnectGoogle}
+                                        className="text-[10px] text-blue-400 hover:text-blue-300 flex items-center gap-1"
+                                    >
+                                        <Globe className="w-3 h-3" /> Connect Account
+                                    </button>
+                                )}
+                                {isGoogleConnected && (
+                                    <span className="text-[10px] text-emerald-500 flex items-center gap-1">
+                                        <Check className="w-3 h-3" /> Account Connected
+                                    </span>
+                                )}
                             </div>
 
                             {/* Add Sheet Form */}
@@ -300,7 +462,7 @@ export default function SettingsPanel({
                                     type="text"
                                     value={sheetUrl}
                                     onChange={(e) => setSheetUrl(e.target.value)}
-                                    placeholder="Paste Google Sheet URL..."
+                                    placeholder={usePrivateSheet ? "Paste Private Google Sheet URL..." : "Paste Public Google Sheet URL..."}
                                     className="w-full px-3 py-2 rounded-lg bg-dark-800 border border-dark-600 text-sm text-dark-200 placeholder-dark-500 focus:outline-none focus:border-brand-500/50 transition-colors"
                                 />
                                 <div className="flex gap-2">
@@ -313,7 +475,7 @@ export default function SettingsPanel({
                                     />
                                     <button
                                         onClick={handleAddSheet}
-                                        disabled={addingSheet || !sheetUrl.trim()}
+                                        disabled={addingSheet || !sheetUrl.trim() || (usePrivateSheet && !isGoogleConnected)}
                                         className="px-4 py-2 rounded-lg bg-green-500/10 text-green-400 text-sm font-medium
                                             hover:bg-green-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed
                                             flex items-center gap-1.5 border border-green-500/20"
@@ -323,11 +485,30 @@ export default function SettingsPanel({
                                         ) : (
                                             <Plus className="w-3.5 h-3.5" />
                                         )}
-                                        {addingSheet ? 'Syncing...' : 'Connect'}
+                                        {addingSheet ? 'Syncing...' : 'Add'}
                                     </button>
                                 </div>
+                                <div className="flex items-center justify-between">
+                                    <label className="flex items-center gap-2 cursor-pointer text-xs text-dark-400 hover:text-dark-300">
+                                        <input
+                                            type="checkbox"
+                                            checked={usePrivateSheet}
+                                            onChange={(e) => setUsePrivateSheet(e.target.checked)}
+                                            className="w-3.5 h-3.5 rounded bg-dark-700 border-dark-600 text-brand-500 focus:ring-0 focus:ring-offset-0"
+                                        />
+                                        Use Private Access (OAuth)
+                                    </label>
+
+                                    {usePrivateSheet && !isGoogleConnected && (
+                                        <button onClick={handleConnectGoogle} className="text-[10px] text-blue-400 hover:underline">
+                                            Sign in to Google required
+                                        </button>
+                                    )}
+                                </div>
                                 <p className="text-[10px] text-dark-500 leading-relaxed">
-                                    ⓘ Make sure the sheet is shared as &quot;Anyone with the link can view&quot;. Data auto-syncs every 5 minutes.
+                                    {usePrivateSheet
+                                        ? "ⓘ Uses your connected Google account to access private sheets. Data is stored as structured tables."
+                                        : "ⓘ Sheet must be 'Anyone with link'. Data is embedded for semantic search."}
                                 </p>
                             </div>
 
@@ -358,6 +539,11 @@ export default function SettingsPanel({
                                                 <Clock className="w-2.5 h-2.5" />
                                                 {formatTime(sheet.last_synced_at)}
                                             </span>
+                                            {sheet.access_mode === 'oauth' && (
+                                                <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20">
+                                                    Private
+                                                </span>
+                                            )}
                                         </div>
                                     </div>
                                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
@@ -422,46 +608,206 @@ export default function SettingsPanel({
 
                 {/* Integrations Tab */}
                 {activeTab === 'integrations' && (
-                    <div className="space-y-4">
-                        {/* WhatsApp */}
-                        <div className="p-4 rounded-xl bg-dark-800/50 border border-dark-700">
-                            <div className="flex items-center gap-3 mb-3">
-                                <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
-                                    <MessageCircle className="w-5 h-5 text-green-400" />
-                                </div>
-                                <div>
-                                    <h4 className="text-sm font-semibold text-white">WhatsApp</h4>
-                                    <p className="text-xs text-dark-500">Business Cloud API</p>
-                                </div>
+                    <div className="space-y-5">
+                        {loadingIntegrations ? (
+                            <div className="flex items-center justify-center py-8">
+                                <Loader2 className="w-5 h-5 text-dark-500 animate-spin" />
                             </div>
-                            <p className="text-xs text-dark-400 leading-relaxed mb-3">
-                                Connect your WhatsApp Business account to receive and respond to messages
-                                through your AI chatbot.
-                            </p>
-                            <div className="text-xs text-dark-500 bg-dark-800 rounded-lg p-3 font-mono">
-                                Webhook URL: /api/webhooks/whatsapp
-                            </div>
-                        </div>
+                        ) : (
+                            <>
+                                {/* ─── WhatsApp (Shared Number) ──────────── */}
+                                <div className="rounded-xl bg-dark-800/50 border border-dark-700 overflow-hidden">
+                                    <div className="flex items-center justify-between p-4 border-b border-dark-700/50">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-green-500/10 rounded-xl flex items-center justify-center">
+                                                <MessageCircle className="w-5 h-5 text-green-400" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-sm font-semibold text-white">WhatsApp</h4>
+                                                <p className="text-xs text-dark-500">Shared Number</p>
+                                            </div>
+                                        </div>
+                                        {waStatus?.enabled && (
+                                            <span className={`text-[10px] font-medium px-2 py-1 rounded-full flex items-center gap-1
+                                                ${waStatus.verified
+                                                    ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                                }`}
+                                            >
+                                                <Power className="w-2.5 h-2.5" />
+                                                {waStatus.verified ? 'Verified' : 'Pending'}
+                                            </span>
+                                        )}
+                                    </div>
 
-                        {/* Telegram */}
-                        <div className="p-4 rounded-xl bg-dark-800/50 border border-dark-700">
-                            <div className="flex items-center gap-3 mb-3">
-                                <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
-                                    <SendIcon className="w-5 h-5 text-blue-400" />
+                                    <div className="p-4 space-y-3">
+                                        {waStatus?.enabled ? (
+                                            <>
+                                                {/* Access Code Display */}
+                                                <div className="p-3 rounded-lg bg-green-500/5 border border-green-500/20">
+                                                    <p className="text-[10px] text-dark-500 mb-1.5">Access Code</p>
+                                                    <div className="flex items-center justify-between">
+                                                        <span className="text-lg font-bold text-green-400 font-mono tracking-wider">{waStatus.access_code}</span>
+                                                        <button
+                                                            onClick={() => copyAccessCode(waStatus.access_code)}
+                                                            className="p-1.5 rounded-lg bg-dark-700 text-dark-400 hover:text-dark-200 transition-all"
+                                                        >
+                                                            {codeCopied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                                                        </button>
+                                                    </div>
+                                                </div>
+
+                                                {/* Instructions */}
+                                                <div className="p-2.5 rounded-lg bg-dark-800 border border-dark-700">
+                                                    <p className="text-[10px] text-dark-500 mb-1">Instructions for users</p>
+                                                    <p className="text-xs text-dark-300">Send <span className="font-mono text-green-400">START {waStatus.access_code}</span> to our WhatsApp number to connect.</p>
+                                                </div>
+
+                                                {/* Status info */}
+                                                {waStatus.verified && waStatus.whatsapp_phone && (
+                                                    <div className="text-xs text-dark-400">
+                                                        <p>Linked phone: <span className="text-dark-300 font-mono">{waStatus.whatsapp_phone}</span></p>
+                                                    </div>
+                                                )}
+
+                                                <button
+                                                    onClick={handleDisableWhatsApp}
+                                                    className="w-full px-3 py-2 rounded-lg text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all flex items-center justify-center gap-1.5"
+                                                >
+                                                    <Trash2 className="w-3 h-3" />
+                                                    Disable WhatsApp
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <p className="text-xs text-dark-400 leading-relaxed">
+                                                    Enable WhatsApp to let users message your chatbot via our shared WhatsApp number.
+                                                    You&apos;ll get a unique access code to share with your users.
+                                                </p>
+
+                                                <button
+                                                    onClick={handleEnableWhatsApp}
+                                                    disabled={enablingWa}
+                                                    className="w-full px-4 py-2.5 rounded-lg bg-green-500/10 text-green-400 text-sm font-medium
+                                                        hover:bg-green-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed
+                                                        flex items-center justify-center gap-2 border border-green-500/20"
+                                                >
+                                                    {enablingWa ? (
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                    ) : (
+                                                        <MessageCircle className="w-4 h-4" />
+                                                    )}
+                                                    {enablingWa ? 'Enabling...' : 'Enable WhatsApp'}
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
-                                <div>
-                                    <h4 className="text-sm font-semibold text-white">Telegram</h4>
-                                    <p className="text-xs text-dark-500">Bot API</p>
+
+                                {/* ─── Telegram ────────────────────────── */}
+                                <div className="rounded-xl bg-dark-800/50 border border-dark-700 overflow-hidden">
+                                    <div className="flex items-center justify-between p-4 border-b border-dark-700/50">
+                                        <div className="flex items-center gap-3">
+                                            <div className="w-10 h-10 bg-blue-500/10 rounded-xl flex items-center justify-center">
+                                                <SendIcon className="w-5 h-5 text-blue-400" />
+                                            </div>
+                                            <div>
+                                                <h4 className="text-sm font-semibold text-white">Telegram</h4>
+                                                <p className="text-xs text-dark-500">Bot API</p>
+                                            </div>
+                                        </div>
+                                        {tgIntegration && (
+                                            <span className={`text-[10px] font-medium px-2 py-1 rounded-full flex items-center gap-1
+                                                ${tgIntegration.is_active
+                                                    ? 'bg-green-500/10 text-green-400 border border-green-500/20'
+                                                    : 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                                                }`}
+                                            >
+                                                <Power className="w-2.5 h-2.5" />
+                                                {tgIntegration.is_active ? 'Active' : 'Paused'}
+                                            </span>
+                                        )}
+                                    </div>
+
+                                    <div className="p-4 space-y-3">
+                                        {tgIntegration ? (
+                                            <>
+                                                <div className="text-xs text-dark-400 space-y-1.5">
+                                                    <p>Bot Token: <span className="text-dark-300 font-mono">{tgIntegration.config.bot_token}</span></p>
+                                                </div>
+
+                                                <div className="p-2.5 rounded-lg bg-dark-800 border border-dark-700">
+                                                    <p className="text-[10px] text-dark-500 mb-1">Webhook URL (auto-registered)</p>
+                                                    <p className="text-xs text-dark-300 font-mono break-all">{backendUrl}/api/webhooks/telegram/{'<token>'}</p>
+                                                </div>
+
+                                                <div className="flex gap-2 pt-1">
+                                                    <button
+                                                        onClick={() => handleToggleIntegration(tgIntegration)}
+                                                        className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5
+                                                            ${tgIntegration.is_active
+                                                                ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 hover:bg-amber-500/20'
+                                                                : 'bg-green-500/10 text-green-400 border border-green-500/20 hover:bg-green-500/20'
+                                                            }`}
+                                                    >
+                                                        <Power className="w-3 h-3" />
+                                                        {tgIntegration.is_active ? 'Pause' : 'Activate'}
+                                                    </button>
+                                                    <button
+                                                        onClick={() => handleDisconnectIntegration(tgIntegration)}
+                                                        className="px-3 py-2 rounded-lg text-xs font-medium bg-red-500/10 text-red-400 border border-red-500/20 hover:bg-red-500/20 transition-all flex items-center justify-center gap-1.5"
+                                                    >
+                                                        <Trash2 className="w-3 h-3" />
+                                                        Disconnect
+                                                    </button>
+                                                </div>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <p className="text-xs text-dark-400 leading-relaxed">
+                                                    Create a bot via
+                                                    <a href="https://t.me/BotFather" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline ml-1 inline-flex items-center gap-0.5">
+                                                        @BotFather <ExternalLink className="w-2.5 h-2.5" />
+                                                    </a>
+                                                    , then paste the token below. Webhook will be registered automatically.
+                                                </p>
+
+                                                <div className="relative">
+                                                    <input
+                                                        type={showTgToken ? 'text' : 'password'}
+                                                        value={tgBotToken}
+                                                        onChange={(e) => setTgBotToken(e.target.value)}
+                                                        placeholder="Bot Token from @BotFather"
+                                                        className="w-full px-3 py-2 pr-10 rounded-lg bg-dark-800 border border-dark-600 text-sm text-dark-200 placeholder-dark-500 focus:outline-none focus:border-blue-500/50 transition-colors"
+                                                    />
+                                                    <button
+                                                        onClick={() => setShowTgToken(!showTgToken)}
+                                                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 text-dark-500 hover:text-dark-300"
+                                                    >
+                                                        {showTgToken ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                                                    </button>
+                                                </div>
+
+                                                <button
+                                                    onClick={handleConnectTelegram}
+                                                    disabled={connectingTg || !tgBotToken.trim()}
+                                                    className="w-full px-4 py-2.5 rounded-lg bg-blue-500/10 text-blue-400 text-sm font-medium
+                                                        hover:bg-blue-500/20 transition-all disabled:opacity-50 disabled:cursor-not-allowed
+                                                        flex items-center justify-center gap-2 border border-blue-500/20"
+                                                >
+                                                    {connectingTg ? (
+                                                        <Loader2 className="w-4 h-4 animate-spin" />
+                                                    ) : (
+                                                        <SendIcon className="w-4 h-4" />
+                                                    )}
+                                                    {connectingTg ? 'Connecting...' : 'Connect Telegram'}
+                                                </button>
+                                            </>
+                                        )}
+                                    </div>
                                 </div>
-                            </div>
-                            <p className="text-xs text-dark-400 leading-relaxed mb-3">
-                                Create a Telegram bot via @BotFather and connect it to route messages
-                                through your RAG pipeline.
-                            </p>
-                            <div className="text-xs text-dark-500 bg-dark-800 rounded-lg p-3 font-mono">
-                                Webhook URL: /api/webhooks/telegram/{'<bot_token>'}
-                            </div>
-                        </div>
+                            </>
+                        )}
                     </div>
                 )}
             </div>

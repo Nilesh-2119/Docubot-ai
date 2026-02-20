@@ -80,43 +80,68 @@ async def check_has_excel_data(db: AsyncSession, chatbot_id: str) -> bool:
 
 
 # ──────────────────────────────────────────────────
-#  SCHEMA EXTRACTION
+#  SCHEMA EXTRACTION (Multi-Sheet Aware)
 # ──────────────────────────────────────────────────
 
 async def get_excel_schema(db: AsyncSession, chatbot_id: str) -> dict:
     """
-    Extract schema from stored ExcelRow JSONB data.
-    Returns: { "columns": [{"name": "Col1", "type": "text"}, ...], "row_count": N }
+    Extract schema from stored ExcelRow JSONB data for ALL sheets.
+    Returns: { 
+        "sheets": [
+            {"name": "Sheet1", "columns": [{"name": "Col1", "type": "text"}, ...], "row_count": 100},
+            {"name": "Google Sheet", "columns": [...], "row_count": 50}
+        ],
+        "total_rows": N 
+    }
     """
-    # Get one sample row to infer column names + types
+    # Get distinct sheet names
     result = await db.execute(
-        select(ExcelRow.row_data)
-        .where(ExcelRow.chatbot_id == chatbot_id)
-        .limit(1)
-    )
-    sample = result.scalar()
-    if not sample:
-        return {"columns": [], "row_count": 0}
-
-    # Count total rows
-    count_result = await db.execute(
-        select(func.count(ExcelRow.id))
+        select(ExcelRow.sheet_name).distinct()
         .where(ExcelRow.chatbot_id == chatbot_id)
     )
-    row_count = count_result.scalar() or 0
+    sheet_names = result.scalars().all()
+    
+    sheets_info = []
+    total_rows = 0
 
-    # Infer column types from sample data
-    columns = []
-    for key, value in sample.items():
-        if isinstance(value, int):
-            col_type = "integer"
-        elif isinstance(value, float):
-            col_type = "numeric"
-        else:
-            col_type = "text"
-        columns.append({"name": key, "type": col_type})
+    for sheet_name in sheet_names:
+        # Get one sample row for this sheet
+        sample_res = await db.execute(
+            select(ExcelRow.row_data)
+            .where(ExcelRow.chatbot_id == chatbot_id, ExcelRow.sheet_name == sheet_name)
+            .limit(1)
+        )
+        sample = sample_res.scalar()
+        
+        # Count rows for this sheet
+        count_res = await db.execute(
+            select(func.count(ExcelRow.id))
+            .where(ExcelRow.chatbot_id == chatbot_id, ExcelRow.sheet_name == sheet_name)
+        )
+        sheet_rows = count_res.scalar() or 0
+        total_rows += sheet_rows
 
-    return {"columns": columns, "row_count": row_count}
+        if not sample:
+            continue
+
+        # Infer column types
+        columns = []
+        for key, value in sample.items():
+            if isinstance(value, int):
+                col_type = "integer"
+            elif isinstance(value, float):
+                col_type = "numeric"
+            else:
+                col_type = "text"
+            columns.append({"name": key, "type": col_type})
+        
+        sheets_info.append({
+            "name": sheet_name,
+            "columns": columns,
+            "row_count": sheet_rows
+        })
+
+    return {"sheets": sheets_info, "total_rows": total_rows}
 
 
 # ──────────────────────────────────────────────────
@@ -128,24 +153,23 @@ SQL_GENERATION_PROMPT = """You are a PostgreSQL query generator. Generate a sing
 TABLE: excel_rows
 - Each row has a JSONB column called `row_data` containing the actual data.
 - You MUST access column values using: row_data->>'ColumnName' for text, or (row_data->>'ColumnName')::numeric for numbers.
-- The table also has: chatbot_id (text), document_id (text), sheet_name (text), row_number (integer).
+- The table also has: chatbot_id (text), document_id (text), google_sheet_id (text), source_type (text: 'excel' or 'google_sheet'), sheet_name (text), row_number (integer).
 
-SCHEMA (columns inside row_data):
-{schema}
+AVAILABLE SHEETS & SCHEMAS:
+{schemas_str}
 
-TOTAL ROWS: {row_count}
+TOTAL ROWS: {total_rows}
 
 RULES:
 1. Generate ONLY a single SELECT statement.
-2. Always include WHERE chatbot_id = :chatbot_id
-3. Use row_data->>'ColumnName' for text comparisons (case-insensitive with ILIKE when appropriate).
-4. Use (row_data->>'ColumnName')::numeric for numeric operations (SUM, COUNT, AVG, MAX, MIN).
-5. For COUNT queries, use COUNT(*) with appropriate WHERE filters.
-6. For listing queries, select the relevant row_data fields.
-7. Add LIMIT 100 for row listing queries.
-8. Do NOT use INSERT, UPDATE, DELETE, DROP, ALTER, or TRUNCATE.
-9. Do NOT use subqueries or JOINs.
-10. Return ONLY the SQL query, nothing else. No markdown, no explanation.
+2. ALWAYS include WHERE chatbot_id = :chatbot_id
+3. Use row_data->>'ColumnName' for text comparisons (case-insensitive with ILIKE).
+4. Use (row_data->>'ColumnName')::numeric for numeric operations.
+5. If the user asks about a specific sheet, filter by `sheet_name`.
+6. If the user asks about "Google Sheets", filter by `source_type = 'google_sheet'`.
+7. For listing questions ("show me", "list"), LIMIT to 20 rows.
+8. Do NOT use subqueries or JOINs.
+9. Return ONLY the SQL query.
 
 USER QUESTION: {question}
 
@@ -158,14 +182,16 @@ async def generate_sql(
     intent: str,
 ) -> str:
     """Generate a safe SELECT SQL query via LLM."""
-    schema_str = "\n".join(
-        f"  - {col['name']} ({col['type']})"
-        for col in schema["columns"]
-    )
+    
+    # Format schemas for all sheets
+    schemas_str = ""
+    for sheet in schema.get("sheets", []):
+        col_list = ", ".join(f"{c['name']} ({c['type']})" for c in sheet["columns"])
+        schemas_str += f"- Sheet '{sheet['name']}' ({sheet['row_count']} rows): {col_list}\n"
 
     prompt = SQL_GENERATION_PROMPT.format(
-        schema=schema_str,
-        row_count=schema["row_count"],
+        schemas_str=schemas_str,
+        total_rows=schema["total_rows"],
         question=question,
     )
 
@@ -334,11 +360,11 @@ async def process_excel_query(
 
     # Step 2: Get schema
     schema = await get_excel_schema(db, chatbot_id)
-    if not schema["columns"]:
+    if not schema["sheets"]:
         return None
 
     if settings.RAG_DEBUG:
-        print(f"🔍 [EXCEL SQL] Schema: {len(schema['columns'])} columns, {schema['row_count']} rows")
+        print(f"🔍 [EXCEL SQL] Schema: {len(schema['sheets'])} sheets, {schema['total_rows']} total rows")
 
     # Step 3: Generate SQL
     try:

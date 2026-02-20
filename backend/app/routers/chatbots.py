@@ -10,6 +10,7 @@ from app.models.document import Document
 from app.models.embedding import Embedding
 from app.models.user import User
 from app.middleware.auth_middleware import get_current_user
+from app.services.subscription_service import check_chatbot_limit
 
 router = APIRouter(prefix="/api/chatbots", tags=["Chatbots"])
 
@@ -53,6 +54,9 @@ async def create_chatbot(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Enforce plan limit
+    await check_chatbot_limit(db, current_user.id)
+
     chatbot = Chatbot(
         user_id=current_user.id,
         name=data.name,

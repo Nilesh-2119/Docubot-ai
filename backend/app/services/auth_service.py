@@ -62,6 +62,9 @@ async def create_user(db: AsyncSession, email: str, password: str, full_name: st
     user = User(email=email, hashed_password=hashed, full_name=full_name)
     db.add(user)
     await db.flush()
+    # Auto-assign FREE plan
+    from app.services.subscription_service import assign_free_plan
+    await assign_free_plan(db, user.id)
     return user
 
 
@@ -70,3 +73,17 @@ async def authenticate_user(db: AsyncSession, email: str, password: str) -> Opti
     if user and verify_password(password, user.hashed_password):
         return user
     return None
+
+async def get_or_create_google_user(db: AsyncSession, email: str, full_name: str) -> User:
+    user = await get_user_by_email(db, email)
+    if user:
+        return user
+    
+    # Create new user
+    # Generate a random password since they login via Google
+    import secrets
+    import string
+    alphabet = string.ascii_letters + string.digits + string.punctuation
+    password = ''.join(secrets.choice(alphabet) for i in range(32))
+    
+    return await create_user(db, email, password, full_name)

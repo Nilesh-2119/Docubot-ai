@@ -42,6 +42,18 @@ class Settings(BaseSettings):
     UPLOAD_DIR: str = "./uploads"
     MAX_FILE_SIZE_MB: int = 10
 
+    
+    # Google OAuth
+    GOOGLE_CLIENT_ID: str = ""
+    GOOGLE_CLIENT_SECRET: str = ""
+    GOOGLE_REDIRECT_URI: str = "http://localhost:3000/google-callback"
+
+    # Stripe Billing
+    STRIPE_SECRET_KEY: str = ""
+    STRIPE_WEBHOOK_SECRET: str = ""
+    STRIPE_PRICE_BETA: str = ""  # Stripe price ID for Beta plan
+    STRIPE_PRICE_ALFA: str = ""  # Stripe price ID for Alfa plan
+
     class Config:
         env_file = ".env"
         extra = "allow"

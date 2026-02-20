@@ -1,16 +1,19 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import { UsageStats } from '@/lib/types';
 import {
     Bot, FileText, MessageSquare, Database,
-    TrendingUp, Zap, ArrowUpRight
+    TrendingUp, Zap, ArrowUpRight, Crown, Shield
 } from 'lucide-react';
 
 export default function DashboardPage() {
+    const router = useRouter();
     const [stats, setStats] = useState<UsageStats | null>(null);
     const [userName, setUserName] = useState('');
+    const [subscription, setSubscription] = useState<any>(null);
 
     useEffect(() => {
         loadData();
@@ -18,12 +21,14 @@ export default function DashboardPage() {
 
     const loadData = async () => {
         try {
-            const [statsData, user] = await Promise.all([
+            const [statsData, user, subData] = await Promise.all([
                 api.getStats(),
                 api.getMe(),
+                api.getSubscription(),
             ]);
             setStats(statsData);
             setUserName(user.full_name);
+            setSubscription(subData);
         } catch (error) {
             console.error('Failed to load dashboard:', error);
         }
@@ -97,6 +102,74 @@ export default function DashboardPage() {
                     </div>
                 ))}
             </div>
+
+            {/* Active Subscription */}
+            {subscription && (
+                <div className="mb-10 animate-slide-up" style={{ animationDelay: '320ms' }}>
+                    <div className="glass-card relative overflow-hidden">
+                        <div className={`absolute top-0 left-0 right-0 h-1 bg-gradient-to-r ${subscription.plan_name === 'ALFA' ? 'from-brand-500 to-brand-700' :
+                                subscription.plan_name === 'BETA' ? 'from-blue-500 to-blue-700' :
+                                    subscription.plan_name === 'CUSTOM' ? 'from-amber-500 to-amber-700' :
+                                        'from-dark-600 to-dark-500'
+                            }`} />
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                            <div className="flex items-center gap-4">
+                                <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${subscription.plan_name === 'ALFA' ? 'bg-brand-500/10' :
+                                        subscription.plan_name === 'BETA' ? 'bg-blue-500/10' :
+                                            subscription.plan_name === 'CUSTOM' ? 'bg-amber-500/10' :
+                                                'bg-dark-700'
+                                    }`}>
+                                    {subscription.plan_name === 'FREE'
+                                        ? <Shield className="w-6 h-6 text-dark-400" />
+                                        : <Crown className={`w-6 h-6 ${subscription.plan_name === 'ALFA' ? 'text-brand-400' :
+                                                subscription.plan_name === 'BETA' ? 'text-blue-400' :
+                                                    'text-amber-400'
+                                            }`} />
+                                    }
+                                </div>
+                                <div>
+                                    <div className="flex items-center gap-2">
+                                        <h3 className="text-lg font-bold text-white">{subscription.plan_name} Plan</h3>
+                                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${subscription.plan_name === 'ALFA' ? 'bg-brand-500/15 text-brand-400' :
+                                                subscription.plan_name === 'BETA' ? 'bg-blue-500/15 text-blue-400' :
+                                                    subscription.plan_name === 'CUSTOM' ? 'bg-amber-500/15 text-amber-400' :
+                                                        'bg-dark-700 text-dark-400'
+                                            }`}>ACTIVE</span>
+                                    </div>
+                                    <p className="text-sm text-dark-400 mt-0.5">
+                                        {subscription.chatbots_used} / {subscription.chatbots_max ?? '∞'} chatbots used
+                                        {subscription.plan_price > 0 && ` · $${subscription.plan_price}/mo`}
+                                    </p>
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                                {subscription.chatbots_max && (
+                                    <div className="w-32">
+                                        <div className="w-full h-2 bg-dark-700 rounded-full overflow-hidden">
+                                            <div
+                                                className={`h-full rounded-full transition-all duration-700 ${(subscription.chatbots_used / subscription.chatbots_max) > 0.8
+                                                        ? 'bg-gradient-to-r from-red-500 to-red-400'
+                                                        : 'bg-gradient-to-r from-brand-500 to-brand-400'
+                                                    }`}
+                                                style={{ width: `${Math.min((subscription.chatbots_used / subscription.chatbots_max) * 100, 100)}%` }}
+                                            />
+                                        </div>
+                                    </div>
+                                )}
+                                <button
+                                    onClick={() => router.push('/dashboard/billing')}
+                                    className="px-4 py-2 rounded-lg text-sm font-medium transition-all
+                                        bg-dark-700/50 text-dark-300 hover:bg-dark-700 hover:text-white
+                                        flex items-center gap-1.5"
+                                >
+                                    {subscription.plan_name === 'FREE' ? 'Upgrade' : 'Manage'}
+                                    <ArrowUpRight className="w-3.5 h-3.5" />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Quick Actions */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">

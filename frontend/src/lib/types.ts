@@ -55,3 +55,15 @@ export interface TokenResponse {
     refresh_token: string;
     token_type: string;
 }
+
+export interface GoogleSheet {
+    id: string;
+    chatbot_id: string;
+    sheet_name: string;
+    sheet_url: string;
+    spreadsheet_id?: string;
+    access_mode: 'public' | 'oauth';
+    status: 'syncing' | 'ready' | 'error';
+    last_synced_at: string | null;
+    created_at: string;
+}

@@ -289,6 +289,111 @@ class ApiClient {
             method: 'DELETE',
         });
     }
+
+    async getGoogleLoginUrl() {
+        return this.request<{ url: string }>('/api/auth/google/login/url');
+    }
+
+    async googleLogin(code: string) {
+        return this.request<{ access_token: string; refresh_token: string }>('/api/auth/google/login', {
+            method: 'POST',
+            body: JSON.stringify({ code }),
+        });
+    }
+
+    // Google Sheets
+    async getGoogleAuthUrl() {
+        return this.request<{ url: string }>('/api/auth/google/url');
+    }
+
+    async handleGoogleCallback(code: string) {
+        return this.request<{ status: string; email?: string }>('/api/auth/google/callback', {
+            method: 'POST',
+            body: JSON.stringify({ code }),
+        });
+    }
+
+    async getGoogleAuthStatus() {
+        return this.request<{ connected: boolean; email?: string | null }>('/api/auth/google/status');
+    }
+
+    async addStructuredSheet(chatbotId: string, sheetUrl: string, sheetName?: string) {
+        return this.request<any>(`/api/chatbots/${chatbotId}/gsheets/oauth`, { // Changed to /oauth endpoint
+            method: 'POST',
+            body: JSON.stringify({ sheet_url: sheetUrl, sheet_name: sheetName || 'Google Sheet' }),
+        });
+    }
+
+    async syncStructuredSheet(chatbotId: string, sheetId: string) {
+        return this.request<any>(`/api/chatbots/${chatbotId}/gsheets/${sheetId}/sync-structured`, {
+            method: 'POST',
+        });
+    }
+
+    // Integrations (WhatsApp / Telegram)
+    async getIntegrations(chatbotId: string) {
+        return this.request<any[]>(`/api/chatbots/${chatbotId}/integrations/`);
+    }
+
+    async createIntegration(chatbotId: string, platform: string, config: Record<string, string>) {
+        return this.request<any>(`/api/chatbots/${chatbotId}/integrations/`, {
+            method: 'POST',
+            body: JSON.stringify({ platform, config }),
+        });
+    }
+
+    async updateIntegration(chatbotId: string, integrationId: string, data: { config?: Record<string, string>; is_active?: boolean }) {
+        return this.request<any>(`/api/chatbots/${chatbotId}/integrations/${integrationId}`, {
+            method: 'PATCH',
+            body: JSON.stringify(data),
+        });
+    }
+
+    async deleteIntegration(chatbotId: string, integrationId: string) {
+        return this.request<any>(`/api/chatbots/${chatbotId}/integrations/${integrationId}`, {
+            method: 'DELETE',
+        });
+    }
+
+    // WhatsApp (shared number)
+    async getWhatsAppStatus(chatbotId: string) {
+        return this.request<any>(`/api/chatbots/${chatbotId}/whatsapp/status`);
+    }
+
+    async enableWhatsApp(chatbotId: string) {
+        return this.request<any>(`/api/chatbots/${chatbotId}/whatsapp/enable`, {
+            method: 'POST',
+        });
+    }
+
+    async disableWhatsApp(chatbotId: string) {
+        return this.request<any>(`/api/chatbots/${chatbotId}/whatsapp/disable`, {
+            method: 'DELETE',
+        });
+    }
+
+    // Billing
+    async getPlans() {
+        return this.request<any[]>('/api/billing/plans');
+    }
+
+    async getSubscription() {
+        return this.request<any>('/api/billing/subscription');
+    }
+
+    async createCheckoutSession(planName: string) {
+        return this.request<{ checkout_url: string }>('/api/billing/create-checkout-session', {
+            method: 'POST',
+            body: JSON.stringify({ plan_name: planName }),
+        });
+    }
+
+    async verifyCheckout(sessionId: string) {
+        return this.request<{ status: string; plan: string }>('/api/billing/verify-checkout', {
+            method: 'POST',
+            body: JSON.stringify({ session_id: sessionId }),
+        });
+    }
 }
 
 export const api = new ApiClient();

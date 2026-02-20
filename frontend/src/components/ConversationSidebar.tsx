@@ -51,14 +51,14 @@ export default function ConversationSidebar({
     };
 
     return (
-        <div className="w-72 h-full bg-dark-950 border-r border-dark-800 flex flex-col">
+        <aside className="fixed inset-y-0 left-0 z-40 w-72 h-full bg-dark-950 border-r border-dark-800 flex flex-col transition-transform duration-300 md:relative md:translate-x-0 shadow-2xl md:shadow-none">
             {/* Header + New Chat Button */}
             <div className="p-4 border-b border-dark-800">
                 <button
                     onClick={onNewChat}
                     className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl
-                               bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium
-                               transition-all duration-200 shadow-lg shadow-brand-500/20"
+                                   bg-brand-600 hover:bg-brand-500 text-white text-sm font-medium
+                                   transition-all duration-200 shadow-lg shadow-brand-500/20"
                 >
                     <Plus className="w-4 h-4" />
                     New Chat
@@ -85,8 +85,8 @@ export default function ConversationSidebar({
                             key={conv.id}
                             onClick={() => onSelectConversation(conv.id)}
                             className={`group mx-2 mb-1 px-3 py-2.5 rounded-lg cursor-pointer
-                                        transition-all duration-150 relative
-                                        ${activeConversationId === conv.id
+                                            transition-all duration-150 relative
+                                            ${activeConversationId === conv.id
                                     ? 'bg-brand-500/10 border border-brand-500/20'
                                     : 'hover:bg-dark-800/60 border border-transparent'
                                 }`}
@@ -119,8 +119,8 @@ export default function ConversationSidebar({
                                 <button
                                     onClick={(e) => handleDelete(e, conv.id)}
                                     className="opacity-0 group-hover:opacity-100 p-1 rounded-md
-                                               hover:bg-red-500/10 text-dark-500 hover:text-red-400
-                                               transition-all duration-150"
+                                                   hover:bg-red-500/10 text-dark-500 hover:text-red-400
+                                                   transition-all duration-150"
                                     title="Delete conversation"
                                 >
                                     {deletingId === conv.id ? (
@@ -134,6 +134,6 @@ export default function ConversationSidebar({
                     ))
                 )}
             </div>
-        </div>
+        </aside>
     );
 }

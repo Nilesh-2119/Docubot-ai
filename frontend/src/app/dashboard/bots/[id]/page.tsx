@@ -35,7 +35,7 @@ export default function BotPage() {
     const [conversations, setConversations] = useState<ConversationItem[]>([]);
     const [isStreaming, setIsStreaming] = useState(false);
     const [streamingContent, setStreamingContent] = useState('');
-    const [settingsOpen, setSettingsOpen] = useState(false);
+    const [settingsOpen, setSettingsOpen] = useState(true);
     const [sidebarOpen, setSidebarOpen] = useState(true);
     const [loading, setLoading] = useState(true);
     const [loadingConversations, setLoadingConversations] = useState(false);
@@ -192,26 +192,40 @@ export default function BotPage() {
     }
 
     return (
-        <div className="h-screen flex relative">
+        <div className="h-[100dvh] flex relative overflow-hidden">
             {/* Conversation Sidebar */}
             {sidebarOpen && (
-                <ConversationSidebar
-                    conversations={conversations}
-                    activeConversationId={conversationId}
-                    onSelectConversation={handleSelectConversation}
-                    onNewChat={handleNewChat}
-                    onDeleteConversation={handleDeleteConversation}
-                    loading={loadingConversations}
-                />
+                <>
+                    {/* Mobile Backdrop - Handled here to control state */}
+                    <div
+                        className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm animate-fade-in"
+                        onClick={() => setSidebarOpen(false)}
+                    />
+                    <ConversationSidebar
+                        conversations={conversations}
+                        activeConversationId={conversationId}
+                        onSelectConversation={(id) => {
+                            handleSelectConversation(id);
+                            // Close sidebar on mobile when selecting a chat
+                            if (window.innerWidth < 768) setSidebarOpen(false);
+                        }}
+                        onNewChat={() => {
+                            handleNewChat();
+                            if (window.innerWidth < 768) setSidebarOpen(false);
+                        }}
+                        onDeleteConversation={handleDeleteConversation}
+                        loading={loadingConversations}
+                    />
+                </>
             )}
 
             {/* Main Chat */}
-            <div className={`flex-1 flex flex-col transition-all duration-300 ${settingsOpen ? 'mr-[420px]' : ''}`}>
+            <div className={`flex-1 flex flex-col transition-all duration-300 ${settingsOpen ? 'md:mr-[420px]' : ''}`}>
                 {/* Top bar with sidebar toggle + settings toggle */}
-                <div className="absolute top-4 right-4 z-30 flex items-center gap-2">
+                <div className="absolute top-16 md:top-4 right-4 z-30 flex items-center gap-2">
                     <button
                         onClick={() => setSidebarOpen(!sidebarOpen)}
-                        className={`p-2.5 rounded-xl transition-all duration-200 ${sidebarOpen
+                        className={`hidden md:block p-2.5 rounded-xl transition-all duration-200 ${sidebarOpen
                             ? 'bg-brand-500/10 text-brand-400 border border-brand-500/20'
                             : 'bg-dark-800 text-dark-400 hover:text-dark-200 border border-dark-700'
                             }`}
@@ -223,6 +237,30 @@ export default function BotPage() {
                             <PanelLeft className="w-4 h-4" />
                         )}
                     </button>
+
+                    {/* Mobile: Show chat list toggle separate from main sidebar? 
+                        Actually sidebarOpen controls the ConversationSidebar on desktop.
+                        On mobile, we need a way to open ConversationSidebar too. 
+                        Let's reuse setSidebarOpen for Conversation Sidebar on mobile?
+                        
+                        Wait, layout.tsx has Sidebar (Navigation).
+                        page.tsx has ConversationSidebar (Chat History).
+                        
+                        We need to clarify:
+                        layout.sidebarOpen -> Navigation
+                        page.sidebarOpen -> Chat History
+                        
+                        On mobile, we have a header in layout.tsx to open Navigation.
+                        In page.tsx, we need a button to open Chat History.
+                    */}
+                    <button
+                        onClick={() => setSidebarOpen(!sidebarOpen)}
+                        className={`md:hidden p-2.5 rounded-xl bg-dark-800 text-dark-400 border border-dark-700`}
+                        title="Chat History"
+                    >
+                        <PanelLeft className="w-4 h-4" />
+                    </button>
+
                     <button
                         onClick={() => setSettingsOpen(!settingsOpen)}
                         className={`p-2.5 rounded-xl transition-all duration-200 ${settingsOpen

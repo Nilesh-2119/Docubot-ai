@@ -19,30 +19,6 @@ settings = get_settings()
 _sync_task = None
 
 
-async def background_sync_sheets():
-    """Background task: sync all Google Sheets every 5 minutes."""
-    from app.models.google_sheet import GoogleSheet
-    from app.services.gsheet_service import sync_sheet
-    from sqlalchemy import select
-
-    while True:
-        await asyncio.sleep(300)  # 5 minutes
-        try:
-            async with async_session() as db:
-                result = await db.execute(
-                    select(GoogleSheet).where(GoogleSheet.status.in_(["ready", "error"]))
-                )
-                sheets = result.scalars().all()
-                for sheet in sheets:
-                    try:
-                        await sync_sheet(db, sheet)
-                    except Exception as e:
-                        print(f"⚠️ Failed to sync sheet {sheet.sheet_name}: {e}")
-                await db.commit()
-        except Exception as e:
-            print(f"⚠️ Background sync error: {e}")
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup and shutdown events."""
@@ -50,15 +26,19 @@ async def lifespan(app: FastAPI):
     # Startup
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     await init_db()
-    print("✅ Database initialized")
-    print("✅ DocuBot AI Backend ready")
-
-    # Start background sync
+    
+    # Seed default plans
+    from app.services.subscription_service import seed_default_plans
+    async with async_session() as db:
+        await seed_default_plans(db)
+    
+    # Start background scheduler
+    from app.services.scheduler import background_sync_sheets
     _sync_task = asyncio.create_task(background_sync_sheets())
-    print("🔄 Google Sheets background sync started (every 5 min)")
-
+    print("✅ Background scheduler started")
+    
     yield
-
+    
     # Shutdown
     if _sync_task:
         _sync_task.cancel()
@@ -95,6 +75,14 @@ app.include_router(widget.router)
 app.include_router(webhooks.router)
 app.include_router(dashboard.router)
 app.include_router(gsheets.router)
+from app.routers import google_auth
+app.include_router(google_auth.router)
+from app.routers import integrations
+app.include_router(integrations.router)
+from app.routers import whatsapp
+app.include_router(whatsapp.router)
+from app.routers import billing
+app.include_router(billing.router)
 
 
 @app.get("/")

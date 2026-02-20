@@ -16,6 +16,8 @@ class GoogleSheet(Base):
     )
     sheet_url: Mapped[str] = mapped_column(Text, nullable=False)
     sheet_name: Mapped[str] = mapped_column(String(255), default="Google Sheet")
+    spreadsheet_id: Mapped[str] = mapped_column(String(255), nullable=True)
+    access_mode: Mapped[str] = mapped_column(String(20), default="public")  # public or oauth
     last_synced_at: Mapped[datetime] = mapped_column(
         DateTime, nullable=True
     )

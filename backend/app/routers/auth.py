@@ -1,5 +1,5 @@
 """Auth routes: register, login, refresh, me."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.database import get_db
@@ -75,3 +75,58 @@ async def refresh_token(data: TokenRefresh, db: AsyncSession = Depends(get_db)):
 @router.get("/me", response_model=UserResponse)
 async def get_me(current_user: User = Depends(get_current_user)):
     return current_user
+
+# Google Login Endpoints
+
+from app.services.google_auth_service import google_auth_service, LOGIN_SCOPES
+from app.services.auth_service import get_or_create_google_user
+from app.config import get_settings
+
+settings = get_settings()
+
+@router.get("/google/login/url")
+async def get_google_login_url():
+    """Get Google OAuth URL for Login"""
+    # Redirect to Frontend Callback
+    callback_url = f"{settings.APP_URL}/auth/callback" 
+    # Ensure APP_URL is set (e.g., http://localhost:3000)
+    # Fallback if needed
+    if "localhost" in settings.BACKEND_URL: # Hacky check
+         callback_url = "http://localhost:3000/auth/callback"
+         
+    return {"url": google_auth_service.get_authorization_url(callback_url, scopes=LOGIN_SCOPES)}
+
+
+@router.post("/google/login", response_model=TokenResponse)
+async def google_login(
+    payload: dict = Body(...),
+    db: AsyncSession = Depends(get_db)
+):
+    """Handle Google Login Code Exchange"""
+    code = payload.get("code")
+    if not code:
+        raise HTTPException(status_code=400, detail="Missing auth code")
+
+    # Must match the URL used to generate the code
+    callback_url = "http://localhost:3000/auth/callback"
+    
+    try:
+        token_data = google_auth_service.exchange_code_for_token(code, callback_url)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Google Auth Failed: {e}")
+        
+    email = token_data.get("email")
+    name = token_data.get("name")
+    
+    if not email:
+        raise HTTPException(status_code=400, detail="No email provided by Google")
+        
+    # Get or create user
+    user = await get_or_create_google_user(db, email, name)
+    
+    # Issue JWT
+    access_token = create_access_token({"sub": user.id})
+    refresh_token = create_refresh_token({"sub": user.id})
+    
+    return TokenResponse(access_token=access_token, refresh_token=refresh_token)
+

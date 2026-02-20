@@ -21,8 +21,12 @@ class ExcelRow(Base):
         String, ForeignKey("chatbots.id", ondelete="CASCADE"), nullable=False
     )
     document_id: Mapped[str] = mapped_column(
-        String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+        String, ForeignKey("documents.id", ondelete="CASCADE"), nullable=True
     )
+    google_sheet_id: Mapped[str] = mapped_column(
+        String, ForeignKey("google_sheets.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    source_type: Mapped[str] = mapped_column(String(50), default="excel")  # 'excel' or 'google_sheet'
     sheet_name: Mapped[str] = mapped_column(String(200), nullable=False, default="Sheet1")
     row_number: Mapped[int] = mapped_column(Integer, nullable=False)
     row_data: Mapped[dict] = mapped_column(JSONB, nullable=False)

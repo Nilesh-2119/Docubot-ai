@@ -98,3 +98,84 @@ async def delete_sheet(
     deleted = await remove_google_sheet(db, sheet_id, chatbot_id)
     if not deleted:
         raise HTTPException(status_code=404, detail="Google Sheet not found")
+
+
+# ──────────────────────────────────────────────────
+#  STRUCTURED SHEETS (OAuth + SQL)
+# ──────────────────────────────────────────────────
+
+@router.post("/oauth", response_model=GoogleSheetResponse)
+async def add_structured_sheet(
+    chatbot_id: str,
+    data: GoogleSheetCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Add a private Google Sheet via OAuth (Structured SQL storage)."""
+    await verify_chatbot_ownership(chatbot_id, current_user, db)
+
+    # Extract ID
+    from app.services.gsheet_service import extract_sheet_id
+    try:
+        spreadsheet_id = extract_sheet_id(data.sheet_url)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Create record
+    sheet = GoogleSheet(
+        chatbot_id=chatbot_id,
+        sheet_url=data.sheet_url,
+        sheet_name=data.sheet_name or "Google Sheet",
+        spreadsheet_id=spreadsheet_id,
+        access_mode="oauth",
+        status="syncing"
+    )
+    db.add(sheet)
+    await db.flush()
+
+    # Sync
+    from app.services.structured_gsheet_service import sync_structured_sheet
+    try:
+        await sync_structured_sheet(db, sheet, current_user.id)
+    except ValueError as e:
+        # Friendly error if not connected
+        db.delete(sheet) # Rollback
+        await db.commit()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        db.delete(sheet) 
+        await db.commit()
+        raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
+
+    return sheet
+
+
+@router.post("/{sheet_id}/sync-structured", response_model=GoogleSheetResponse)
+async def sync_structured(
+    chatbot_id: str,
+    sheet_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Sync a specific structured Google Sheet."""
+    await verify_chatbot_ownership(chatbot_id, current_user, db)
+
+    result = await db.execute(
+        select(GoogleSheet).where(
+            GoogleSheet.id == sheet_id,
+            GoogleSheet.chatbot_id == chatbot_id,
+        )
+    )
+    sheet = result.scalar_one_or_none()
+    if not sheet:
+        raise HTTPException(status_code=404, detail="Google Sheet not found")
+
+    if sheet.access_mode != "oauth":
+         raise HTTPException(status_code=400, detail="This sheet is not configured for OAuth/Structured sync.")
+
+    from app.services.structured_gsheet_service import sync_structured_sheet
+    try:
+        await sync_structured_sheet(db, sheet, current_user.id)
+        return sheet
+    except Exception as e:
+         raise HTTPException(status_code=500, detail=f"Sync failed: {str(e)}")
