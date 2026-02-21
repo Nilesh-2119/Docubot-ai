@@ -70,4 +70,10 @@ def get_settings() -> Settings:
     elif settings.DATABASE_URL.startswith("postgresql://"):
         settings.DATABASE_URL = settings.DATABASE_URL.replace("postgresql://", "postgresql+asyncpg://", 1)
         
+    # Sanitize URLs (remove trailing slashes)
+    if settings.APP_URL.endswith("/"):
+        settings.APP_URL = settings.APP_URL.rstrip("/")
+    if settings.BACKEND_URL.endswith("/"):
+        settings.BACKEND_URL = settings.BACKEND_URL.rstrip("/")
+        
     return settings
