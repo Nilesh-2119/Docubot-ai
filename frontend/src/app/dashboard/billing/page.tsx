@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { Suspense, useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import {
@@ -27,8 +27,6 @@ interface SubscriptionData {
     allow_google_sync: boolean;
     subscription_status: string;
 }
-
-
 
 const PLAN_COLORS: Record<string, { gradient: string; badge: string; border: string; bg: string }> = {
     FREE: {
@@ -64,7 +62,7 @@ const PLAN_ICONS: Record<string, any> = {
     CUSTOM: Sparkles,
 };
 
-export default function BillingPage() {
+function BillingPageContent() {
     const searchParams = useSearchParams();
     const [plans, setPlans] = useState<PlanData[]>([]);
     const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
@@ -78,7 +76,6 @@ export default function BillingPage() {
     useEffect(() => {
         const sessionId = searchParams?.get('session_id');
         if (searchParams?.get('success') === 'true' && sessionId) {
-            // Verify the checkout session and upgrade the plan
             api.verifyCheckout(sessionId)
                 .then(() => {
                     toast.success('Plan upgraded successfully!');
@@ -143,7 +140,6 @@ export default function BillingPage() {
 
     return (
         <div className="max-w-5xl mx-auto px-6 py-10">
-            {/* Header */}
             <div className="mb-10">
                 <div className="flex items-center gap-3 mb-2">
                     <div className="w-10 h-10 bg-gradient-to-br from-brand-500 to-brand-700 rounded-xl flex items-center justify-center">
@@ -156,10 +152,8 @@ export default function BillingPage() {
                 </div>
             </div>
 
-            {/* Current Plan + Usage */}
             {subscription && (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
-                    {/* Current Plan Card */}
                     <div className={`rounded-xl border ${PLAN_COLORS[currentPlan]?.border || 'border-dark-700'} ${PLAN_COLORS[currentPlan]?.bg || 'bg-dark-800/50'} p-5`}>
                         <div className="flex items-center justify-between mb-3">
                             <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${PLAN_COLORS[currentPlan]?.badge || 'bg-dark-700 text-dark-300'}`}>
@@ -173,7 +167,6 @@ export default function BillingPage() {
                         </p>
                     </div>
 
-                    {/* Chatbots Usage */}
                     <div className="rounded-xl border border-dark-700 bg-dark-800/50 p-5">
                         <div className="flex items-center gap-2 mb-3">
                             <Bot className="w-4 h-4 text-brand-400" />
@@ -193,7 +186,6 @@ export default function BillingPage() {
                 </div>
             )}
 
-            {/* Plans Grid */}
             <h2 className="text-lg font-bold text-white mb-5">Compare Plans</h2>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
                 {plans.map((plan) => {
@@ -310,7 +302,6 @@ export default function BillingPage() {
                 })}
             </div>
 
-            {/* Features Comparison Table */}
             <div className="rounded-xl border border-dark-700 bg-dark-900 overflow-hidden">
                 <div className="px-5 py-4 border-b border-dark-800">
                     <h3 className="text-sm font-bold text-white">Feature Comparison</h3>
@@ -375,5 +366,17 @@ export default function BillingPage() {
                 </div>
             </div>
         </div>
+    );
+}
+
+export default function BillingPage() {
+    return (
+        <Suspense fallback={
+            <div className="min-h-screen flex items-center justify-center">
+                <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+            </div>
+        }>
+            <BillingPageContent />
+        </Suspense>
     );
 }

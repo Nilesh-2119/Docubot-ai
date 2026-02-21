@@ -1,12 +1,12 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { Suspense, useEffect, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 
-export default function AuthCallbackPage() {
+function AuthCallbackContent() {
     const router = useRouter();
     const searchParams = useSearchParams();
     const code = searchParams.get('code');
@@ -14,8 +14,6 @@ export default function AuthCallbackPage() {
 
     useEffect(() => {
         if (!code) {
-            // If no code, maybe redirect to login?
-            // But wait, what if it's an error?
             const error = searchParams.get('error');
             if (error) {
                 toast.error(`Auth Error: ${error}`);
@@ -49,5 +47,18 @@ export default function AuthCallbackPage() {
             <Loader2 className="w-10 h-10 text-brand-500 animate-spin mb-4" />
             <h2 className="text-dark-200 animate-pulse">Authenticating...</h2>
         </div>
+    );
+}
+
+export default function AuthCallbackPage() {
+    return (
+        <Suspense fallback={
+            <div className="flex flex-col items-center justify-center min-h-screen bg-dark-950">
+                <Loader2 className="w-10 h-10 text-brand-500 animate-spin mb-4" />
+                <h2 className="text-dark-200 animate-pulse">Loading...</h2>
+            </div>
+        }>
+            <AuthCallbackContent />
+        </Suspense>
     );
 }

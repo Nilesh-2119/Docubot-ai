@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { Suspense, useState, useEffect, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import { Chatbot } from '@/lib/types';
@@ -24,7 +24,7 @@ interface ConversationItem {
     updated_at: string;
 }
 
-export default function BotPage() {
+function BotPageContent() {
     const params = useParams();
     const searchParams = useSearchParams();
     const botId = params?.id as string;
@@ -106,7 +106,6 @@ export default function BotPage() {
         try {
             await api.deleteConversation(botId, convId);
             setConversations((prev) => prev.filter((c) => c.id !== convId));
-            // If deleting the active conversation, start a new chat
             if (convId === conversationId) {
                 handleNewChat();
             }
@@ -116,7 +115,6 @@ export default function BotPage() {
     };
 
     const handleSendMessage = async (message: string) => {
-        // Add user message
         const userMsg: ChatMessage = {
             id: `user-${Date.now()}`,
             role: 'user',
@@ -133,9 +131,7 @@ export default function BotPage() {
                 botId,
                 message,
                 conversationId,
-                // onChunk
                 (chunk: string) => {
-                    // Check for conversation ID in the stream
                     if (chunk.startsWith('__CONV_ID__')) {
                         const convId = chunk.replace('__CONV_ID__', '').replace('__END__', '');
                         setConversationId(convId);
@@ -144,7 +140,6 @@ export default function BotPage() {
                     fullContent += chunk;
                     setStreamingContent(fullContent);
                 },
-                // onDone
                 () => {
                     const assistantMsg: ChatMessage = {
                         id: `assistant-${Date.now()}`,
@@ -154,10 +149,8 @@ export default function BotPage() {
                     setMessages((prev) => [...prev, assistantMsg]);
                     setStreamingContent('');
                     setIsStreaming(false);
-                    // Refresh conversation list to show the new/updated conversation
                     loadConversations();
                 },
-                // onError
                 (error: string) => {
                     const errorMsg: ChatMessage = {
                         id: `error-${Date.now()}`,
@@ -193,10 +186,8 @@ export default function BotPage() {
 
     return (
         <div className="h-[100dvh] flex relative overflow-hidden">
-            {/* Conversation Sidebar */}
             {sidebarOpen && (
                 <>
-                    {/* Mobile Backdrop - Handled here to control state */}
                     <div
                         className="fixed inset-0 bg-black/50 z-30 md:hidden backdrop-blur-sm animate-fade-in"
                         onClick={() => setSidebarOpen(false)}
@@ -206,7 +197,6 @@ export default function BotPage() {
                         activeConversationId={conversationId}
                         onSelectConversation={(id) => {
                             handleSelectConversation(id);
-                            // Close sidebar on mobile when selecting a chat
                             if (window.innerWidth < 768) setSidebarOpen(false);
                         }}
                         onNewChat={() => {
@@ -219,9 +209,7 @@ export default function BotPage() {
                 </>
             )}
 
-            {/* Main Chat */}
             <div className={`flex-1 flex flex-col transition-all duration-300 ${settingsOpen ? 'md:mr-[420px]' : ''}`}>
-                {/* Top bar with sidebar toggle + settings toggle */}
                 <div className="absolute top-16 md:top-4 right-4 z-30 flex items-center gap-2">
                     <button
                         onClick={() => setSidebarOpen(!sidebarOpen)}
@@ -238,21 +226,6 @@ export default function BotPage() {
                         )}
                     </button>
 
-                    {/* Mobile: Show chat list toggle separate from main sidebar? 
-                        Actually sidebarOpen controls the ConversationSidebar on desktop.
-                        On mobile, we need a way to open ConversationSidebar too. 
-                        Let's reuse setSidebarOpen for Conversation Sidebar on mobile?
-                        
-                        Wait, layout.tsx has Sidebar (Navigation).
-                        page.tsx has ConversationSidebar (Chat History).
-                        
-                        We need to clarify:
-                        layout.sidebarOpen -> Navigation
-                        page.sidebarOpen -> Chat History
-                        
-                        On mobile, we have a header in layout.tsx to open Navigation.
-                        In page.tsx, we need a button to open Chat History.
-                    */}
                     <button
                         onClick={() => setSidebarOpen(!sidebarOpen)}
                         className={`md:hidden p-2.5 rounded-xl bg-dark-800 text-dark-400 border border-dark-700`}
@@ -272,7 +245,6 @@ export default function BotPage() {
                     </button>
                 </div>
 
-                {/* Loading messages overlay */}
                 {loadingMessages ? (
                     <div className="flex-1 flex items-center justify-center">
                         <div className="flex flex-col items-center gap-3">
@@ -292,12 +264,23 @@ export default function BotPage() {
                 )}
             </div>
 
-            {/* Settings Panel */}
             <SettingsPanel
                 chatbot={chatbot}
                 isOpen={settingsOpen}
                 onClose={() => setSettingsOpen(false)}
             />
         </div>
+    );
+}
+
+export default function BotPage() {
+    return (
+        <Suspense fallback={
+            <div className="h-screen flex items-center justify-center">
+                <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
+            </div>
+        }>
+            <BotPageContent />
+        </Suspense>
     );
 }
