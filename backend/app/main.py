@@ -52,19 +52,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
-        settings.APP_URL,
-        "http://localhost:3000",
-        "http://localhost:3001",
-        "*",  # Allow widget embeds from any origin
-    ],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# CORS Security
+from app.middleware.cors_middleware import SecureCORSMiddleware
+app.add_middleware(SecureCORSMiddleware)
 
 # Include routers
 app.include_router(auth.router)
