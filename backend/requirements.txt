@@ -31,11 +31,19 @@ tiktoken>=0.8.0
 # HTTP Client
 httpx>=0.27.0
 
-# Telegram
+# Stripe & Billing
+stripe>=9.0.0
 python-telegram-bot>=21.0.1
+
+# Google API & OAuth
+google-api-python-client>=2.100.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+cryptography>=42.0.0
 
 # Config
 pydantic-settings>=2.1.0
+pydantic[email]>=2.6.0
 
 # CORS & Utils
 python-dotenv>=1.0.1

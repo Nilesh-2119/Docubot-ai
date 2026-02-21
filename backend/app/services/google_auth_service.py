@@ -143,7 +143,7 @@ class GoogleAuthService:
             token_uri="https://oauth2.googleapis.com/token",
             client_id=settings.GOOGLE_CLIENT_ID,
             client_secret=settings.GOOGLE_CLIENT_SECRET,
-            scopes=SCOPES
+            scopes=SHEET_SCOPES
         )
 
         if creds.expired and creds.refresh_token:
