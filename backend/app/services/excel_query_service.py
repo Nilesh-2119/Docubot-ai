@@ -219,7 +219,9 @@ async def generate_sql(
 FORBIDDEN_KEYWORDS = [
     "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "TRUNCATE",
     "CREATE", "GRANT", "REVOKE", "EXEC", "EXECUTE",
-    "INTO", "--", "/*",
+    "COPY", "UNION", "VALUES", "PG_READ_FILE", "PG_LS_DIR",
+    "CURRENT_USER", "SESSION_USER", "VERSION", "INET_SERVER_ADDR",
+    "--", "/*",
 ]
 
 
@@ -238,21 +240,32 @@ def validate_sql(sql: str) -> tuple[bool, str]:
         return False, "Query must start with SELECT"
 
     # Reject multiple statements
-    # Split by semicolons, filter out empty strings
-    statements = [s.strip() for s in sql.split(";") if s.strip()]
-    if len(statements) > 1:
-        return False, "Multiple statements not allowed"
+    if ";" in sql.rstrip().rstrip(";"):
+        return False, "Multiple statements or trailing semicolons not allowed"
 
     # Check forbidden keywords (outside of string literals)
     for keyword in FORBIDDEN_KEYWORDS:
-        # Use word boundary check to avoid false positives
         pattern = r'\b' + re.escape(keyword) + r'\b'
         if re.search(pattern, sql_upper):
             return False, f"Forbidden keyword: {keyword}"
 
+    # Special check for 'INTO' to avoid false positives in column names
+    # Only block if it's 'INTO' as a command (not inside row_data references)
+    if re.search(r'\bINTO\b', sql_upper):
+        if not re.search(r"row_data\s*->>\s*'[^']*INTO[^']*'", sql.lower()):
+            return False, "Forbidden keyword: INTO"
+
     # Must reference chatbot_id for multi-tenant safety
     if "chatbot_id" not in sql.lower():
         return False, "Query must include chatbot_id filter"
+    
+    # Must ONLY reference excel_rows table
+    if "from" in sql.lower():
+        # Simple check for other table names
+        other_tables = ["users", "chatbots", "embeddings", "conversations", "messages", "integrations", "google_sheets"]
+        for table in other_tables:
+            if table in sql.lower():
+                return False, f"Query cannot reference table: {table}"
 
     return True, ""
 
@@ -268,21 +281,25 @@ async def execute_safe_query(
 ) -> list[dict]:
     """
     Execute a validated SQL query with chatbot_id parameter.
-    Always adds LIMIT safeguard.
+    Always adds LIMIT safeguard and runs in a read-only transaction.
     """
     # Add LIMIT if not already present
     if "LIMIT" not in sql.upper():
         sql = sql.rstrip().rstrip(";") + " LIMIT 1000"
 
-    result = await db.execute(
-        text(sql),
-        {"chatbot_id": chatbot_id}
-    )
+    # Start a nested transaction to set it to read-only for this execution
+    async with db.begin_nested():
+        await db.execute(text("SET TRANSACTION READ ONLY"))
+        
+        result = await db.execute(
+            text(sql),
+            {"chatbot_id": chatbot_id}
+        )
 
-    rows = result.fetchall()
-    columns = result.keys()
+        rows = result.fetchall()
+        columns = result.keys()
 
-    return [dict(zip(columns, row)) for row in rows]
+        return [dict(zip(columns, row)) for row in rows]
 
 
 # ──────────────────────────────────────────────────
