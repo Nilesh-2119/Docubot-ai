@@ -36,7 +36,7 @@ async def upload_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    check_rate_limit(upload_limiter, current_user.id, "uploads")
+    await check_rate_limit(upload_limiter, current_user.id, "uploads")
     await verify_chatbot_ownership(chatbot_id, current_user, db)
 
     try:

@@ -26,7 +26,7 @@ async def send_message(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    check_rate_limit(chat_limiter, current_user.id, "messages")
+    await check_rate_limit(chat_limiter, current_user.id, "messages")
 
     # Verify ownership
     result = await db.execute(

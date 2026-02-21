@@ -17,7 +17,7 @@ router = APIRouter(prefix="/api/auth", tags=["Authentication"])
 
 @router.post("/register", response_model=TokenResponse, status_code=status.HTTP_201_CREATED)
 async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
-    check_rate_limit(auth_limiter, data.email, "registration attempts")
+    await check_rate_limit(auth_limiter, data.email, "registration attempts")
 
     existing = await get_user_by_email(db, data.email)
     if existing:
@@ -35,7 +35,7 @@ async def register(data: UserRegister, db: AsyncSession = Depends(get_db)):
 
 @router.post("/login", response_model=TokenResponse)
 async def login(data: UserLogin, db: AsyncSession = Depends(get_db)):
-    check_rate_limit(auth_limiter, data.email, "login attempts")
+    await check_rate_limit(auth_limiter, data.email, "login attempts")
 
     user = await authenticate_user(db, data.email, data.password)
     if not user:

@@ -5,6 +5,7 @@ from functools import lru_cache
 class Settings(BaseSettings):
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://postgres:password@localhost:5432/docubot"
+    REDIS_URL: str = "redis://localhost:6379/0"
 
     # JWT
     JWT_SECRET_KEY: str = "change-this-secret-key"

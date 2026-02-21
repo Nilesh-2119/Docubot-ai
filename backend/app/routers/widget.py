@@ -1,6 +1,6 @@
 """Public widget chat endpoint (no auth, bot-id based)."""
 import json
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
@@ -17,12 +17,14 @@ router = APIRouter(prefix="/api/widget", tags=["Widget"])
 
 @router.post("/{bot_id}/chat")
 async def widget_chat(
+    request: Request,
     bot_id: str,
     data: WidgetChatMessage,
     db: AsyncSession = Depends(get_db),
 ):
     """Public chat endpoint for embedded widget — no auth required."""
-    check_rate_limit(chat_limiter, f"widget_{bot_id}", "messages")
+    client_ip = request.headers.get("x-forwarded-for") or request.client.host
+    await check_rate_limit(chat_limiter, f"widget_{bot_id}_{client_ip}", "messages")
 
     # Verify bot exists and is active
     result = await db.execute(
@@ -50,12 +52,14 @@ async def widget_chat(
 
 @router.post("/{bot_id}/chat/stream")
 async def widget_chat_stream(
+    request: Request,
     bot_id: str,
     data: WidgetChatMessage,
     db: AsyncSession = Depends(get_db),
 ):
     """Public streaming chat endpoint for embedded widget."""
-    check_rate_limit(chat_limiter, f"widget_{bot_id}", "messages")
+    client_ip = request.headers.get("x-forwarded-for") or request.client.host
+    await check_rate_limit(chat_limiter, f"widget_{bot_id}_{client_ip}", "messages")
 
     result = await db.execute(
         select(Chatbot).where(Chatbot.id == bot_id)
