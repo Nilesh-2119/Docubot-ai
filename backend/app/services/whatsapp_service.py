@@ -23,8 +23,19 @@ async def send_whatsapp_message(to: str, message: str) -> dict:
     }
 
     async with httpx.AsyncClient() as client:
-        response = await client.post(WHATSAPP_API_URL, json=payload, headers=headers)
-        return response.json()
+        try:
+            response = await client.post(WHATSAPP_API_URL, json=payload, headers=headers)
+            res_data = response.json()
+            
+            if response.status_code != 200:
+                print(f"❌ Meta API Error ({response.status_code}): {res_data}")
+            elif settings.RAG_DEBUG:
+                print(f"✅ Meta API Success: {res_data}")
+                
+            return res_data
+        except Exception as e:
+            print(f"❌ httpx Error sending WhatsApp: {e}")
+            return {"error": str(e)}
 
 
 def verify_webhook(mode: str, token: str, challenge: str) -> str | None:

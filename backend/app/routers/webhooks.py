@@ -56,6 +56,62 @@ async def whatsapp_webhook(
     sender_phone = message_data["from"]
     text = message_data["text"].strip()
 
+    # ── Check if message is a START command ─ (CHECK THIS FIRST) ──
+    if text.upper().startswith("START "):
+        code = text.split(" ", 1)[1].strip().upper()
+
+        # Look up the access code
+        result = await db.execute(
+            select(WhatsAppConnection).where(
+                WhatsAppConnection.access_code == code
+            )
+        )
+        conn = result.scalar_one_or_none()
+
+        if not conn:
+            await send_whatsapp_message(
+                to=sender_phone,
+                message=(
+                    "❌ Invalid access code.\n\n"
+                    "Please check your code and try again.\n"
+                    "Format: START DOCU-XXXX"
+                ),
+            )
+            return {"status": "invalid_code"}
+
+        # Check if already verified
+        if conn.verified:
+            if conn.whatsapp_phone == sender_phone:
+                await send_whatsapp_message(
+                    to=sender_phone,
+                    message="✅ You are already connected to this chatbot! Feel free to ask any questions.",
+                )
+                return {"status": "already_verified"}
+            else:
+                await send_whatsapp_message(
+                    to=sender_phone,
+                    message=(
+                        "⚠️ This code is already linked to another phone number.\n"
+                        "Please contact the chatbot owner for a new code."
+                    ),
+                )
+                return {"status": "already_linked"}
+
+        # Link phone to chatbot
+        conn.whatsapp_phone = sender_phone
+        conn.verified = True
+        await db.flush()
+
+        await send_whatsapp_message(
+            to=sender_phone,
+            message=(
+                "✅ Connected successfully!\n\n"
+                "You can now ask me anything. I'll respond using AI.\n"
+                "Just type your question and send it!"
+            ),
+        )
+        return {"status": "verified"}
+
     # ── Check if phone is already linked ──
     result = await db.execute(
         select(WhatsAppConnection).where(
@@ -86,54 +142,6 @@ async def whatsapp_webhook(
                 message="Sorry, I encountered an error processing your message. Please try again.",
             )
         return {"status": "ok"}
-
-    # ── Check if message is a START command ──
-    if text.upper().startswith("START "):
-        code = text.split(" ", 1)[1].strip().upper()
-
-        # Look up the access code
-        result = await db.execute(
-            select(WhatsAppConnection).where(
-                WhatsAppConnection.access_code == code
-            )
-        )
-        conn = result.scalar_one_or_none()
-
-        if not conn:
-            await send_whatsapp_message(
-                to=sender_phone,
-                message=(
-                    "❌ Invalid access code.\n\n"
-                    "Please check your code and try again.\n"
-                    "Format: START DOCU-XXXX"
-                ),
-            )
-            return {"status": "invalid_code"}
-
-        if conn.verified and conn.whatsapp_phone and conn.whatsapp_phone != sender_phone:
-            await send_whatsapp_message(
-                to=sender_phone,
-                message=(
-                    "⚠️ This code is already linked to another phone number.\n"
-                    "Please contact the chatbot owner for a new code."
-                ),
-            )
-            return {"status": "already_linked"}
-
-        # Link phone to chatbot
-        conn.whatsapp_phone = sender_phone
-        conn.verified = True
-        await db.flush()
-
-        await send_whatsapp_message(
-            to=sender_phone,
-            message=(
-                "✅ Connected successfully!\n\n"
-                "You can now ask me anything. I'll respond using AI.\n"
-                "Just type your question and send it!"
-            ),
-        )
-        return {"status": "verified"}
 
     # ── Unknown phone, no START command ──
     await send_whatsapp_message(
