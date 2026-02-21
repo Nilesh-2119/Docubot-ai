@@ -89,11 +89,6 @@ async def get_google_login_url():
     """Get Google OAuth URL for Login"""
     # Redirect to Frontend Callback
     callback_url = f"{settings.APP_URL}/auth/callback" 
-    # Ensure APP_URL is set (e.g., http://localhost:3000)
-    # Fallback if needed
-    if "localhost" in settings.BACKEND_URL: # Hacky check
-         callback_url = "http://localhost:3000/auth/callback"
-         
     return {"url": google_auth_service.get_authorization_url(callback_url, scopes=LOGIN_SCOPES)}
 
 
@@ -108,7 +103,7 @@ async def google_login(
         raise HTTPException(status_code=400, detail="Missing auth code")
 
     # Must match the URL used to generate the code
-    callback_url = "http://localhost:3000/auth/callback"
+    callback_url = f"{settings.APP_URL}/auth/callback"
     
     try:
         token_data = google_auth_service.exchange_code_for_token(code, callback_url)
