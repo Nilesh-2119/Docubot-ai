@@ -226,7 +226,3 @@ The widget creates a floating chat bubble with isolated styling (Shadow DOM). No
 See `backend/.env.example` and `frontend/.env.example` for all required environment variables.
 
 ---
-
-## License
-
-MIT
