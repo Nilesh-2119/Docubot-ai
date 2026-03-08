@@ -16,21 +16,21 @@ DEFAULT_PLANS = [
     {
         "name": "FREE",
         "price_monthly": 0.0,
-        "max_chatbots": 1,
-        "allow_whatsapp": False,
+        "max_chatbots": 5,      # Increased from 1
+        "allow_whatsapp": True,  # Allowed for launch
         "allow_google_sync": True,
     },
     {
         "name": "BETA",
-        "price_monthly": 15.0,
-        "max_chatbots": 10,
-        "allow_whatsapp": False,
+        "price_monthly": 0.0,    # Cut to 0
+        "max_chatbots": 20,
+        "allow_whatsapp": True,
         "allow_google_sync": True,
     },
     {
         "name": "ALFA",
-        "price_monthly": 30.0,
-        "max_chatbots": 25,
+        "price_monthly": 0.0,    # Cut to 0
+        "max_chatbots": 100,
         "allow_whatsapp": True,
         "allow_google_sync": True,
     },

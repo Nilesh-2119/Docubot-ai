@@ -7,6 +7,8 @@ import asyncio
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+import firebase_admin
+from firebase_admin import credentials
 
 from app.config import get_settings
 from app.database import init_db, async_session
@@ -26,6 +28,26 @@ async def lifespan(app: FastAPI):
     # Startup
     os.makedirs(settings.UPLOAD_DIR, exist_ok=True)
     await init_db()
+    
+    # Initialize Firebase Admin
+    if settings.FIREBASE_CREDENTIALS:
+        try:
+            if settings.FIREBASE_CREDENTIALS.strip().startswith("{"):
+                import json
+                cred_dict = json.loads(settings.FIREBASE_CREDENTIALS)
+                cred = credentials.Certificate(cred_dict)
+            else:
+                cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS)
+            firebase_admin.initialize_app(cred)
+            print("🔥 Firebase Admin initialized")
+        except Exception as e:
+            print(f"⚠️ Failed to initialize Firebase Admin: {e}")
+    else:
+        try:
+            firebase_admin.initialize_app()
+            print("🔥 Firebase Admin initialized with default credentials")
+        except Exception as e:
+            print(f"⚠️ Firebase Admin not initialized: {e}")
     
     # Seed default plans
     from app.services.subscription_service import seed_default_plans

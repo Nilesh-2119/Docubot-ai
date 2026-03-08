@@ -49,6 +49,16 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_SECRET: str = ""
     GOOGLE_REDIRECT_URI: str = "http://localhost:3000/google-callback"
 
+    # Firebase Admin SDK Credentials
+    FIREBASE_CREDENTIALS: str = ""  # Path to JSON or JSON string
+
+    # SMTP (Email / OTP)
+    SMTP_HOST: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    SMTP_USER: str = ""
+    SMTP_PASSWORD: str = ""
+    SMTP_FROM_NAME: str = "DocuBot AI"
+
     # Stripe Billing
     STRIPE_SECRET_KEY: str = ""
     STRIPE_WEBHOOK_SECRET: str = ""

@@ -1,3 +1,5 @@
+import { auth } from '@/lib/firebase';
+
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 class ApiClient {
@@ -7,14 +9,18 @@ class ApiClient {
         this.baseUrl = API_URL;
     }
 
-    private getToken(): string | null {
-        if (typeof window === 'undefined') return null;
-        return localStorage.getItem('access_token');
+    private async getToken(): Promise<string | null> {
+        if (!auth.currentUser) return null;
+        try {
+            return await auth.currentUser.getIdToken();
+        } catch {
+            return null;
+        }
     }
 
-    private getHeaders(isFormData = false): HeadersInit {
+    private async getHeaders(isFormData = false): Promise<HeadersInit> {
         const headers: HeadersInit = {};
-        const token = this.getToken();
+        const token = await this.getToken();
         if (token) {
             headers['Authorization'] = `Bearer ${token}`;
         }
@@ -29,37 +35,18 @@ class ApiClient {
         options: RequestInit = {}
     ): Promise<T> {
         const isFormData = options.body instanceof FormData;
-        const isAuthEndpoint = endpoint.startsWith('/api/auth/login') || endpoint.startsWith('/api/auth/register');
+        const headers = await this.getHeaders(isFormData);
+        
         const response = await fetch(`${this.baseUrl}${endpoint}`, {
             ...options,
             headers: {
-                ...this.getHeaders(isFormData),
+                ...headers,
                 ...(options.headers || {}),
             },
         });
 
-        if (response.status === 401 && !isAuthEndpoint) {
-            // Try to refresh token (only for non-auth endpoints)
-            const refreshed = await this.refreshToken();
-            if (refreshed) {
-                const retryResponse = await fetch(`${this.baseUrl}${endpoint}`, {
-                    ...options,
-                    headers: {
-                        ...this.getHeaders(isFormData),
-                        ...(options.headers || {}),
-                    },
-                });
-                if (!retryResponse.ok) {
-                    throw new Error(await retryResponse.text());
-                }
-                return retryResponse.json();
-            }
-            // Redirect to login
-            if (typeof window !== 'undefined') {
-                localStorage.removeItem('access_token');
-                localStorage.removeItem('refresh_token');
-                window.location.href = '/login';
-            }
+        if (response.status === 401) {
+            // Let the AuthContext handle redirection organically
             throw new Error('Unauthorized');
         }
 
@@ -75,48 +62,7 @@ class ApiClient {
         return response.json();
     }
 
-    private async refreshToken(): Promise<boolean> {
-        const refreshToken = localStorage.getItem('refresh_token');
-        if (!refreshToken) return false;
-
-        try {
-            const response = await fetch(`${this.baseUrl}/api/auth/refresh`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ refresh_token: refreshToken }),
-            });
-
-            if (!response.ok) return false;
-
-            const data = await response.json();
-            localStorage.setItem('access_token', data.access_token);
-            localStorage.setItem('refresh_token', data.refresh_token);
-            return true;
-        } catch {
-            return false;
-        }
-    }
-
     // Auth
-    async register(email: string, password: string, fullName: string) {
-        return this.request<{ access_token: string; refresh_token: string }>(
-            '/api/auth/register',
-            {
-                method: 'POST',
-                body: JSON.stringify({ email, password, full_name: fullName }),
-            }
-        );
-    }
-
-    async login(email: string, password: string) {
-        return this.request<{ access_token: string; refresh_token: string }>(
-            '/api/auth/login',
-            {
-                method: 'POST',
-                body: JSON.stringify({ email, password }),
-            }
-        );
-    }
 
     async getMe() {
         return this.request<{ id: string; email: string; full_name: string }>('/api/auth/me');
@@ -290,16 +236,6 @@ class ApiClient {
         });
     }
 
-    async getGoogleLoginUrl() {
-        return this.request<{ url: string }>('/api/auth/google/login/url');
-    }
-
-    async googleLogin(code: string) {
-        return this.request<{ access_token: string; refresh_token: string }>('/api/auth/google/login', {
-            method: 'POST',
-            body: JSON.stringify({ code }),
-        });
-    }
 
     // Google Sheets
     async getGoogleAuthUrl() {

@@ -8,6 +8,16 @@ class UserRegister(BaseModel):
     email: str = Field(..., min_length=5, max_length=255)
     password: str = Field(..., min_length=8, max_length=128)
     full_name: str = Field(..., min_length=2, max_length=255)
+    otp: str = Field(..., min_length=6, max_length=6)
+
+
+class OTPRequest(BaseModel):
+    email: str = Field(..., min_length=5, max_length=255)
+
+
+class OTPVerify(BaseModel):
+    email: str = Field(..., min_length=5, max_length=255)
+    otp: str = Field(..., min_length=6, max_length=6)
 
 
 class UserLogin(BaseModel):

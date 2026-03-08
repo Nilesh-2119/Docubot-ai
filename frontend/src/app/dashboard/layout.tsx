@@ -6,6 +6,7 @@ import { api } from '@/lib/api';
 import Sidebar from '@/components/Sidebar';
 import { Chatbot } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
+import { useAuth } from '@/context/AuthContext';
 
 export default function DashboardLayout({
     children,
@@ -14,6 +15,8 @@ export default function DashboardLayout({
 }) {
     const router = useRouter();
     const pathname = usePathname();
+    const { user, loading: authLoading, logout } = useAuth();
+    
     const [chatbots, setChatbots] = useState<Chatbot[]>([]);
     const [loading, setLoading] = useState(true);
     const [sidebarOpen, setSidebarOpen] = useState(true);
@@ -21,17 +24,20 @@ export default function DashboardLayout({
     const activeBotId = pathname?.split('/bots/')?.[1]?.split('/')?.[0] || '';
 
     useEffect(() => {
-        const token = localStorage.getItem('access_token');
-        if (!token) {
+        if (!authLoading && !user) {
             router.push('/login');
             return;
         }
-        loadChatbots();
+        
+        if (user) {
+            loadChatbots();
+        }
+
         // Close sidebar on mobile navigation
         if (window.innerWidth < 768) {
             setSidebarOpen(false);
         }
-    }, [router, pathname]);
+    }, [authLoading, user, router, pathname]);
 
     const loadChatbots = async () => {
         try {
@@ -77,19 +83,15 @@ export default function DashboardLayout({
         }
     };
 
-    const handleLogout = () => {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        router.push('/login');
-    };
-
-    if (loading) {
+    if (authLoading || (loading && user)) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-dark-950">
                 <Loader2 className="w-8 h-8 text-brand-500 animate-spin" />
             </div>
         );
     }
+    
+    if (!user) return null; // Prevent flash before redirect occurs
 
     return (
         <div className="min-h-screen flex bg-dark-950 font-sans">
@@ -101,7 +103,7 @@ export default function DashboardLayout({
                 onCreateBot={handleCreateBot}
                 onDeleteBot={handleDeleteBot}
                 onRenameBot={handleRenameBot}
-                onLogout={handleLogout}
+                onLogout={logout}
             />
 
             {/* Mobile Header */}

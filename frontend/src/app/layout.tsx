@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { Toaster } from 'react-hot-toast';
+import { AuthProvider } from '@/context/AuthContext';
 
 export const metadata: Metadata = {
     title: 'DocuBot AI — Intelligent Document Chatbots',
@@ -16,18 +17,20 @@ export default function RootLayout({
     return (
         <html lang="en" className="dark">
             <body className="min-h-screen bg-dark-950">
-                <Toaster
-                    position="top-right"
-                    toastOptions={{
-                        style: {
-                            background: '#1e293b',
-                            color: '#f1f5f9',
-                            border: '1px solid #334155',
-                            borderRadius: '12px',
-                        },
-                    }}
-                />
-                {children}
+                <AuthProvider>
+                    <Toaster
+                        position="top-right"
+                        toastOptions={{
+                            style: {
+                                background: '#1e293b',
+                                color: '#f1f5f9',
+                                border: '1px solid #334155',
+                                borderRadius: '12px',
+                            },
+                        }}
+                    />
+                    {children}
+                </AuthProvider>
             </body>
         </html>
     );

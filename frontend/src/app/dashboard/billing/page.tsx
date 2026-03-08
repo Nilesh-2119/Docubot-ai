@@ -62,6 +62,12 @@ const PLAN_ICONS: Record<string, any> = {
     CUSTOM: Sparkles,
 };
 
+const ORIGINAL_PRICES: Record<string, number> = {
+    FREE: 0,
+    BETA: 15,
+    ALFA: 30,
+};
+
 function BillingPageContent() {
     const searchParams = useSearchParams();
     const [plans, setPlans] = useState<PlanData[]>([]);
@@ -108,6 +114,8 @@ function BillingPageContent() {
     };
 
     const handleUpgrade = async (planName: string) => {
+        // If price is 0, we can potentially skip Stripe or just let it process a $0 session
+        // For now, let's proceed with Stripe if configured, otherwise we'd need a direct upgrade API
         setUpgrading(planName);
         try {
             const { checkout_url } = await api.createCheckoutSession(planName);
@@ -141,13 +149,18 @@ function BillingPageContent() {
     return (
         <div className="max-w-5xl mx-auto px-6 py-10">
             <div className="mb-10">
-                <div className="flex items-center gap-3 mb-2">
-                    <div className="w-10 h-10 bg-gradient-to-br from-brand-500 to-brand-700 rounded-xl flex items-center justify-center">
-                        <CreditCard className="w-5 h-5 text-white" />
+                <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-gradient-to-br from-brand-500 to-brand-700 rounded-xl flex items-center justify-center">
+                            <CreditCard className="w-5 h-5 text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-2xl font-bold text-white">Billing & Plans</h1>
+                            <p className="text-sm text-dark-400">Manage your subscription and usage</p>
+                        </div>
                     </div>
-                    <div>
-                        <h1 className="text-2xl font-bold text-white">Billing & Plans</h1>
-                        <p className="text-sm text-dark-400">Manage your subscription and usage</p>
+                    <div className="px-4 py-2 rounded-full bg-brand-500/10 border border-brand-500/20 text-brand-400 text-xs font-bold animate-pulse">
+                        🚀 LAUNCH SPECIAL: ALL PLANS $0
                     </div>
                 </div>
             </div>
@@ -161,10 +174,11 @@ function BillingPageContent() {
                             </span>
                         </div>
                         <h3 className="text-xl font-bold text-white mb-1">{currentPlan}</h3>
-                        <p className="text-2xl font-bold text-white">
-                            ${subscription.plan_price}
+                        <div className="flex items-baseline gap-2">
+                            <span className="text-2xl font-bold text-white">$0</span>
+                            <span className="text-sm text-dark-500 line-through">${ORIGINAL_PRICES[currentPlan] || subscription.plan_price}</span>
                             <span className="text-sm font-normal text-dark-500">/mo</span>
-                        </p>
+                        </div>
                     </div>
 
                     <div className="rounded-xl border border-dark-700 bg-dark-800/50 p-5">
@@ -192,8 +206,9 @@ function BillingPageContent() {
                     const colors = PLAN_COLORS[plan.name] || PLAN_COLORS.FREE;
                     const Icon = PLAN_ICONS[plan.name] || Shield;
                     const isCurrent = currentPlan === plan.name;
-                    const isUpgrade = plan.price_monthly > (subscription?.plan_price || 0);
+                    const isUpgrade = plan.price_monthly > (subscription?.plan_price || 0) || (plan.name !== 'FREE' && currentPlan === 'FREE');
                     const isCustom = plan.name === 'CUSTOM';
+                    const originalPrice = ORIGINAL_PRICES[plan.name] || plan.price_monthly;
 
                     return (
                         <div
@@ -221,10 +236,13 @@ function BillingPageContent() {
                                 {isCustom ? (
                                     <p className="text-xl font-bold text-white">Custom</p>
                                 ) : (
-                                    <p className="text-2xl font-bold text-white">
-                                        ${plan.price_monthly}
+                                    <div className="flex items-baseline gap-2">
+                                        <p className="text-2xl font-bold text-white">$0</p>
+                                        {originalPrice > 0 && (
+                                            <span className="text-sm text-dark-500 line-through">${originalPrice}</span>
+                                        )}
                                         <span className="text-sm font-normal text-dark-500">/mo</span>
-                                    </p>
+                                    </div>
                                 )}
                             </div>
 
