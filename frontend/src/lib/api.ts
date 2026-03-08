@@ -317,17 +317,10 @@ class ApiClient {
         return this.request<any>('/api/billing/subscription');
     }
 
-    async createCheckoutSession(planName: string) {
-        return this.request<{ checkout_url: string }>('/api/billing/create-checkout-session', {
+    async upgradePlan(planName: string) {
+        return this.request<{ status: string; plan: string }>('/api/billing/upgrade-plan', {
             method: 'POST',
             body: JSON.stringify({ plan_name: planName }),
-        });
-    }
-
-    async verifyCheckout(sessionId: string) {
-        return this.request<{ status: string; plan: string }>('/api/billing/verify-checkout', {
-            method: 'POST',
-            body: JSON.stringify({ session_id: sessionId }),
         });
     }
 }

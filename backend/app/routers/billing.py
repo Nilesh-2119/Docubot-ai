@@ -58,59 +58,48 @@ async def get_subscription(
     return usage
 
 
-# ── Stripe Checkout ───────────────────────────────────
+# ── Instant Free Upgrade (Bypassing Stripe) ───────────
 
-@router.post("/create-checkout-session")
-async def create_checkout_session(
+@router.post("/upgrade-plan")
+async def upgrade_plan(
     data: dict,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Create a Stripe Checkout Session for plan upgrade."""
+    """Instantly upgrade the user's plan for free, bypassing Stripe."""
     plan_name = data.get("plan_name", "").upper()
 
-    if plan_name not in PLAN_STRIPE_PRICES:
-        raise HTTPException(status_code=400, detail="Invalid plan")
+    # Find the requested plan in the database
+    result = await db.execute(select(Plan).where(Plan.name == plan_name))
+    plan = result.scalar_one_or_none()
+    
+    if not plan:
+        raise HTTPException(status_code=400, detail=f"Plan {plan_name} not found or invalid.")
 
-    price_id = PLAN_STRIPE_PRICES[plan_name]
-    if not price_id:
-        raise HTTPException(
-            status_code=400,
-            detail="Stripe price not configured for this plan.",
+    # Get the user's current subscription, or create a new one
+    result = await db.execute(
+        select(Subscription).where(Subscription.user_id == current_user.id)
+    )
+    sub = result.scalar_one_or_none()
+
+    if sub:
+        sub.plan_id = plan.id
+        sub.status = "active"
+        # Since we're bypassing Stripe, we don't need these IDs right now
+        # sub.stripe_customer_id = ...
+        # sub.stripe_subscription_id = ...
+    else:
+        sub = Subscription(
+            user_id=current_user.id,
+            plan_id=plan.id,
+            status="active",
         )
+        db.add(sub)
 
-    # Get or create Stripe customer
-    sub, _ = await get_user_subscription(db, current_user.id)
-    customer_id = sub.stripe_customer_id if sub else None
-
-    if not customer_id:
-        customer = stripe.Customer.create(
-            email=current_user.email,
-            name=current_user.full_name,
-            metadata={"user_id": current_user.id},
-        )
-        customer_id = customer.id
-        # Save customer ID
-        if sub:
-            sub.stripe_customer_id = customer_id
-            await db.flush()
-
-    try:
-        session = stripe.checkout.Session.create(
-            customer=customer_id,
-            mode="subscription",
-            payment_method_types=["card"],
-            line_items=[{"price": price_id, "quantity": 1}],
-            success_url=f"{settings.APP_URL}/dashboard/billing?success=true&session_id={{CHECKOUT_SESSION_ID}}",
-            cancel_url=f"{settings.APP_URL}/dashboard/billing?cancelled=true",
-            metadata={
-                "user_id": current_user.id,
-                "plan_name": plan_name,
-            },
-        )
-        return {"checkout_url": session.url}
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Stripe error: {str(e)}")
+    await db.commit()
+    print(f"🚀 User {current_user.email} INSTANTLY upgraded to {plan_name} for FREE.")
+    
+    return {"status": "upgraded", "plan": plan_name}
 
 
 # ── Verify Checkout (for localhost / no-webhook fallback) ─

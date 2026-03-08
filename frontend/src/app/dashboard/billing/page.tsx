@@ -1,7 +1,6 @@
 'use client';
 
 import { Suspense, useEffect, useState } from 'react';
-import { useSearchParams } from 'next/navigation';
 import { api } from '@/lib/api';
 import {
     CreditCard, Zap, Bot, Shield,
@@ -69,7 +68,6 @@ const ORIGINAL_PRICES: Record<string, number> = {
 };
 
 function BillingPageContent() {
-    const searchParams = useSearchParams();
     const [plans, setPlans] = useState<PlanData[]>([]);
     const [subscription, setSubscription] = useState<SubscriptionData | null>(null);
     const [loading, setLoading] = useState(true);
@@ -78,25 +76,6 @@ function BillingPageContent() {
     useEffect(() => {
         loadData();
     }, []);
-
-    useEffect(() => {
-        const sessionId = searchParams?.get('session_id');
-        if (searchParams?.get('success') === 'true' && sessionId) {
-            api.verifyCheckout(sessionId)
-                .then(() => {
-                    toast.success('Plan upgraded successfully!');
-                    loadData();
-                })
-                .catch((err: any) => {
-                    console.error('Verify checkout error:', err);
-                    toast.error('Failed to verify upgrade. Please refresh.');
-                    loadData();
-                });
-        }
-        if (searchParams?.get('cancelled') === 'true') {
-            toast('Upgrade cancelled', { icon: '↩️' });
-        }
-    }, [searchParams]);
 
     const loadData = async () => {
         try {
@@ -114,14 +93,14 @@ function BillingPageContent() {
     };
 
     const handleUpgrade = async (planName: string) => {
-        // If price is 0, we can potentially skip Stripe or just let it process a $0 session
-        // For now, let's proceed with Stripe if configured, otherwise we'd need a direct upgrade API
         setUpgrading(planName);
         try {
-            const { checkout_url } = await api.createCheckoutSession(planName);
-            window.location.href = checkout_url;
+            await api.upgradePlan(planName);
+            toast.success(`Successfully upgraded to ${planName} plan! 🎉`);
+            await loadData();
         } catch (error: any) {
-            toast.error(error.message || 'Failed to start checkout');
+            toast.error(error.message || 'Failed to upgrade plan');
+        } finally {
             setUpgrading(null);
         }
     };
