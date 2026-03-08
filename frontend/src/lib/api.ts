@@ -136,7 +136,7 @@ class ApiClient {
         onDone: () => void,
         onError: (error: string) => void,
     ) {
-        const token = this.getToken();
+        const token = await this.getToken();
         const response = await fetch(`${this.baseUrl}/api/chatbots/${chatbotId}/chat/stream`, {
             method: 'POST',
             headers: {
